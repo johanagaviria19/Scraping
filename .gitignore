@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.streamlit/
+.DS_Store
+*.log
+data/
+playwright/.cache/
+.playwright/
+playwright_storage_state.json
+.trae/
