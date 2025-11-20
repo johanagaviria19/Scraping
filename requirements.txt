@@ -4,3 +4,6 @@ lxml==5.3.0
 streamlit==1.38.0
 pandas==2.2.3
 altair==5.4.1
+typing_extensions==4.15.0
+playwright==1.56.0
+flair==0.13.1
