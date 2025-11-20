@@ -198,6 +198,102 @@ def _render_capture_search(url: str, timeout_ms: int = 15000) -> List[Dict]:
         return []
     return results
 
+def _render_capture_reviews(url: str, timeout_ms: int = 15000, max_reviews: int = 60) -> List[Dict]:
+    try:
+        from playwright.sync_api import sync_playwright
+    except Exception:
+        return []
+    out: List[Dict] = []
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context(user_agent=random.choice(USER_AGENTS), locale="es-ES")
+            page = context.new_page()
+            page.goto(url, wait_until="domcontentloaded")
+            for sel in [
+                'button:has-text("Aceptar")',
+                'button:has-text("Entendido")',
+                'button:has-text("OK")',
+                '[data-testid="action:understood-button"]',
+            ]:
+                try:
+                    btn = page.locator(sel)
+                    if btn and btn.count() > 0:
+                        btn.first.click(timeout=2000)
+                except Exception:
+                    pass
+            for sel in [
+                'a:has-text("Opiniones")',
+                'a:has-text("Ver todas")',
+                'a:has-text("Ver más")',
+                'a[href*="#reviews"]',
+            ]:
+                try:
+                    lnk = page.locator(sel)
+                    if lnk and lnk.count() > 0:
+                        lnk.first.click(timeout=3000)
+                        break
+                except Exception:
+                    pass
+            try:
+                page.wait_for_selector('div.ui-review, section#reviews', timeout=timeout_ms)
+            except Exception:
+                pass
+            for _ in range(12):
+                try:
+                    page.mouse.wheel(0, 1200)
+                    page.wait_for_timeout(400)
+                except Exception:
+                    break
+            cards = page.locator('div.ui-review')
+            n = cards.count()
+            for i in range(min(n, max_reviews)):
+                try:
+                    card = cards.nth(i)
+                    title = None
+                    try:
+                        t = card.locator('.ui-review__title')
+                        if t.count() > 0:
+                            title = t.first.inner_text().strip()
+                    except Exception:
+                        pass
+                    body = None
+                    try:
+                        b = card.locator('.ui-review__comment-text, .ui-pdp-review__comment')
+                        if b.count() > 0:
+                            body = b.first.inner_text().strip()
+                    except Exception:
+                        pass
+                    rate = None
+                    try:
+                        r = card.locator('.ui-review__rating')
+                        if r.count() > 0:
+                            txt = r.first.inner_text().strip()
+                            m = re.search(r"(\d+)(?:\.|,)?", txt)
+                            rate = int(m.group(1)) if m else None
+                    except Exception:
+                        pass
+                    date = None
+                    try:
+                        d = card.locator('time')
+                        if d.count() > 0:
+                            date = d.first.get_attribute('datetime')
+                    except Exception:
+                        pass
+                    if body or title:
+                        out.append({
+                            'title': title,
+                            'content': body,
+                            'rate': rate,
+                            'date': date,
+                        })
+                except Exception:
+                    continue
+            context.close(); browser.close()
+    except Exception:
+        return out
+    return out
+
 # storage_state helper removido para volver al estado estable
     try:
         with sync_playwright() as p:
@@ -513,7 +609,7 @@ def _find_next_page(html: str) -> Optional[str]:
     return None
 
 
-def _extract_product_detail(html: str) -> Dict:
+def _extract_product_detail(html: str, base_url: Optional[str] = None) -> Dict:
     """
     Extrae información del detalle del producto: descripción, vendidos, calificación.
     """
@@ -574,11 +670,75 @@ def _extract_product_detail(html: str) -> Dict:
             mm = re.search(r"(\d+)", cnode.get_text(strip=True))
             rating_count = int(mm.group(1)) if mm else None
 
+    reviews: List[Dict] = []
+    for r in soup.select("div.ui-review"):
+        try:
+            title = None
+            tnode = r.select_one(".ui-review__title")
+            if tnode:
+                title = tnode.get_text(strip=True)
+            body = None
+            bnode = r.select_one(".ui-review__comment-text") or r.select_one(".ui-pdp-review__comment")
+            if bnode:
+                body = bnode.get_text("\n", strip=True)
+            rate = None
+            rnode = r.select_one(".ui-review__rating")
+            if rnode:
+                m = re.search(r"(\d+)(?:\.|,)?", rnode.get_text(strip=True))
+                rate = int(m.group(1)) if m else None
+            date = None
+            dnode = r.select_one("time")
+            if dnode and dnode.has_attr("datetime"):
+                date = dnode["datetime"]
+            if body or title:
+                reviews.append({
+                    "title": title,
+                    "content": body,
+                    "rate": rate,
+                    "date": date,
+                })
+        except Exception:
+            continue
+    if not reviews:
+        try:
+            for ld in soup.select('script[type="application/ld+json"]'):
+                data = json.loads(ld.string or ld.text or '{}')
+                if isinstance(data, dict):
+                    rlist = data.get("review")
+                    if isinstance(rlist, list):
+                        for rv in rlist:
+                            try:
+                                title = rv.get("name")
+                                body = rv.get("reviewBody")
+                                rate = None
+                                rt = rv.get("reviewRating") or {}
+                                if isinstance(rt, dict):
+                                    rate = int(rt.get("ratingValue") or 0) or None
+                                date = rv.get("datePublished")
+                                if body or title:
+                                    reviews.append({
+                                        "title": title,
+                                        "content": body,
+                                        "rate": rate,
+                                        "date": date,
+                                    })
+                            except Exception:
+                                continue
+        except Exception:
+            pass
+    if base_url and len(reviews) < 10:
+        try:
+            more = _render_capture_reviews(base_url, timeout_ms=15000, max_reviews=60)
+            if more:
+                reviews.extend(more)
+        except Exception:
+            pass
     return {
         "description": description,
         "sold": sold,
         "detail_rating": rating,
         "detail_rating_count": rating_count,
+        "reviews": reviews[:60],
     }
 
 
@@ -643,7 +803,7 @@ def scrape_listing(keyword: str, max_pages: int = 10, per_page_delay: float = 1.
                 time.sleep(detail_delay + random.uniform(0, 0.5))
                 detail_html, final_url = _request_with_url(item["url"])
                 if detail_html:
-                    detail = _extract_product_detail(detail_html)
+                    detail = _extract_product_detail(detail_html, final_url or item.get("url"))
                     item.update(detail)
                     if final_url:
                         item["url"] = final_url
@@ -746,7 +906,7 @@ def scrape_listing_from_url(url: str, max_pages: int = 10, per_page_delay: float
                 time.sleep(detail_delay + random.uniform(0, 0.5))
                 detail_html, final_url = _request_with_url(item["url"])
                 if detail_html:
-                    detail = _extract_product_detail(detail_html)
+                    detail = _extract_product_detail(detail_html, final_url or item.get("url"))
                     item.update(detail)
                     if final_url:
                         item["url"] = final_url
