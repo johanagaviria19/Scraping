@@ -121,19 +121,7 @@ def render_dashboard(df: pd.DataFrame):
     else:
         st.info("Sin datos para la distribución de precios")
 
-    st.subheader("Top productos por reseñas")
-    top_reviews = fdf.dropna(subset=["rating"]).copy()
-    if not top_reviews.empty:
-        top_reviews = top_reviews.sort_values(["rating", "rating_count"], ascending=False).head(20)
-        review_chart = alt.Chart(top_reviews).mark_bar().encode(
-            x=alt.X("title", sort="-y", title="Producto"),
-            y=alt.Y("rating", title="Calificación"),
-            color=alt.Color("rating_count", title="# Reseñas"),
-            tooltip=["rating", "rating_count", "price"],
-        ).properties(height=300)
-        st.altair_chart(review_chart, use_container_width=True)
-    else:
-        st.info("Sin datos de reseñas para graficar")
+    
 
     st.subheader("Mejor relación precio-beneficio")
     best_benefit = fdf.dropna(subset=["price"]).copy()
