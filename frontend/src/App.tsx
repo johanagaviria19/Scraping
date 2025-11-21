@@ -68,6 +68,14 @@ const IconEyeOff = (props: any) => (
   </svg>
 )
 
+const IconCart = (props: any) => (
+  <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <circle cx="9" cy="20" r="2"/>
+    <circle cx="17" cy="20" r="2"/>
+    <path d="M2 3h3l2 12h11l2-8H6"/>
+  </svg>
+)
+
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
 const isValidEmail = (s: string) => EMAIL_REGEX.test(String(s || '').trim().toLowerCase())
@@ -101,18 +109,13 @@ const passwordScore = (s: string) => {
 export default function App() {
   const [source, setSource] = useState('telefono')
   const [isUrl, setIsUrl] = useState(false)
-  const [maxPages, setMaxPages] = useState(5)
-  const [perPageDelay, setPerPageDelay] = useState(1.5)
-  const [detailDelay, setDetailDelay] = useState(1.0)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [data, setData] = useState<ApiResponse | null>(null)
   const [analysis, setAnalysis] = useState<Analysis | null>(null)
-  const [username, setUsername] = useState('user')
-  const [password, setPassword] = useState('pass')
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
   const [token, setToken] = useState<string | null>(null)
-  const [useFile, setUseFile] = useState(false)
-  const [onlyDiscount, setOnlyDiscount] = useState(false)
   const [priceMin, setPriceMin] = useState<number>(0)
   const [priceMax, setPriceMax] = useState<number>(0)
   const [ratingMin, setRatingMin] = useState<number>(0)
@@ -121,7 +124,6 @@ export default function App() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [remember, setRemember] = useState(true)
   const [showPwd, setShowPwd] = useState(false)
-  const [showPwdReg, setShowPwdReg] = useState(false)
   const [showPwdReg2, setShowPwdReg2] = useState(false)
   const [authErrors, setAuthErrors] = useState<{ email?: string; password?: string; confirm?: string; general?: string }>({})
   const [authLoading, setAuthLoading] = useState(false)
@@ -129,23 +131,23 @@ export default function App() {
   const [lockUntil, setLockUntil] = useState<number | null>(null)
   const pwScore = useMemo(() => passwordScore(password), [password])
   const pwIssues = useMemo(() => passwordIssues(password), [password])
+  useEffect(() => { try { document.title = 'smartmarket-ai' } catch {} }, [])
+  const priceMaxBound = useMemo(() => {
+    const items = data?.items || []
+    const prices = items.map(it => Number(it.price || 0)).filter(v => v > 0)
+    const pmax = prices.length ? Math.max(...prices) : 5
+    return Math.max(5, pmax)
+  }, [data?.items])
 
   const canSearch = useMemo(() => source.trim().length > 0, [source])
 
-  const ratingColor = (r?: number | null) => {
-    const v = Number(r || 0)
-    if (v >= 4.5) return '#2ecc71'
-    if (v >= 3.5) return '#f1c40f'
-    return '#e74c3c'
+
+  const formatCOP = (v?: number | null) => {
+    const n = Number(v || 0)
+    if (!n || n <= 0) return ''
+    return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n)
   }
 
-  const barWidth = (r?: number | null, max = 400) => `${Math.max(2, Math.min(max, (Number(r || 0) / 5) * max))}px`
-
-  const estimate = useMemo(() => {
-    const min = Math.max(1, Math.round((maxPages * (perPageDelay * 2 + detailDelay * 0.5))))
-    const max = Math.max(min + 1, Math.round((maxPages * (perPageDelay * 3 + detailDelay * 1.5))))
-    return { min, max }
-  }, [maxPages, perPageDelay, detailDelay])
 
   useEffect(() => {
     const ls = typeof window !== 'undefined' ? window.localStorage.getItem('accessToken') : null
@@ -172,10 +174,9 @@ export default function App() {
       const r = Number(it.rating || 0)
       const okP = p === 0 ? true : (p >= Math.min(priceMin, priceMax) && p <= Math.max(priceMin, priceMax))
       const okR = r >= Math.min(ratingMin, ratingMax) && r <= Math.max(ratingMin, ratingMax)
-      const okD = onlyDiscount ? (it.discount_price != null) : true
-      return okP && okR && okD
+      return okP && okR
     })
-  }, [data?.items, priceMin, priceMax, ratingMin, ratingMax, onlyDiscount])
+  }, [data?.items, priceMin, priceMax, ratingMin, ratingMax])
 
   const runSearch = async () => {
     if (!canSearch) return
@@ -184,8 +185,8 @@ export default function App() {
     try {
       const endpoint = isUrl ? '/from-url_with_analysis' : '/search_cached_with_analysis'
       const body = isUrl
-        ? { url: source, max_pages: maxPages, per_page_delay: perPageDelay, detail_delay: detailDelay }
-        : { keyword: source, max_pages: maxPages, per_page_delay: perPageDelay, detail_delay: detailDelay }
+        ? { url: source }
+        : { keyword: source }
       const res = await fetch(`${API_BASE}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -231,15 +232,7 @@ export default function App() {
     }
   }
 
-  const register = async () => {
-    setError(null)
-    const res = await fetch(`${JAVA_BASE}/auth/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
-    })
-    if (!res.ok && res.status !== 201) setError(`HTTP ${res.status}`)
-  }
+  
 
   const login = async () => {
     setError(null)
@@ -264,6 +257,12 @@ export default function App() {
       const n = attempts + 1
       setAttempts(n)
       if (n >= 5) setLockUntil(Date.now() + 60_000)
+      setUsername('')
+      setPassword('')
+      setConfirmPassword('')
+      setShowPwd(false)
+      
+      setShowPwdReg2(false)
       setAuthLoading(false)
       return
     }
@@ -285,23 +284,28 @@ export default function App() {
       window.localStorage.removeItem('accessToken')
       window.sessionStorage.removeItem('accessToken')
     } catch {}
+    setUsername('')
+    setPassword('')
+    setConfirmPassword('')
+    setShowPwd(false)
+    
+    setShowPwdReg2(false)
+    
   }
 
-  const onFileChange = async (f?: File | null) => {
-    if (!f) return
-    try {
-      const txt = await f.text()
-      const json = JSON.parse(txt)
-      const items: Item[] = Array.isArray(json?.items) ? json.items : Array.isArray(json) ? json : []
-      setData({ keyword: 'archivo', count: items.length, items })
-      setAnalysis(null)
-    } catch {}
-  }
+  
 
   if (!token) {
     return (
-      <div className="login-screen">
-        <div className="auth-card">
+      <>
+        <div className="topbar">
+          <div className="brand">
+            <IconCart />
+            <span className="brand-title">smartmarket-ai</span>
+          </div>
+        </div>
+        <div className="login-screen">
+          <div className="auth-card">
           <div className="lock-badge"><IconLock /></div>
           <div className="auth-title">{authMode === 'login' ? 'Bienvenido' : 'Crear Cuenta'}</div>
           <div className="subtitle">{authMode === 'login' ? 'Inicia sesión en tu cuenta' : 'Regístrate para empezar'}</div>
@@ -386,12 +390,20 @@ export default function App() {
             <button className="link accent" onClick={() => setAuthMode(m => m === 'login' ? 'register' : 'login')}>{authMode === 'login' ? 'Regístrate' : 'Inicia sesión'}</button>
           </div>
         </div>
-      </div>
+        </div>
+      </>
     )
   }
 
   return (
-    <div className="dashboard">
+    <>
+      <div className="topbar">
+        <div className="brand">
+          <IconCart />
+          <span className="brand-title">smartmarket-ai</span>
+        </div>
+      </div>
+      <div className="dashboard">
       <div className="sidebar">
         <div className="panel">
           <div className="panel-title">Búsqueda</div>
@@ -399,41 +411,20 @@ export default function App() {
             <input type="checkbox" checked={isUrl} onChange={(e) => setIsUrl(e.target.checked)} />
             <span>Usar URL</span>
           </label>
-          <label className="row">
-            <input type="checkbox" checked={useFile} onChange={(e) => setUseFile(e.target.checked)} />
-            <span>Usar archivo</span>
-          </label>
-          {useFile ? (
-            <input type="file" className="input" accept="application/json" onChange={(e) => onFileChange(e.target.files?.[0])} />
-          ) : (
-            <input
-              value={source}
-              onChange={(e) => setSource(e.target.value)}
-              placeholder={isUrl ? 'https://listado.mercadolibre.com.co/...' : 'palabra clave'}
-              className="input"
-            />
-          )}
-          <div className="row">
-            <div className="lbl">Máx. páginas</div>
-            <input type="number" min={1} max={20} value={maxPages} onChange={(e) => setMaxPages(Number(e.target.value))} className="input small" />
-          </div>
-          <div className="row">
-            <div className="lbl">Delay por página (s)</div>
-          </div>
-          <input type="range" min={0} max={5} step={0.5} value={perPageDelay} onChange={(e) => setPerPageDelay(Number(e.target.value))} />
-          <div className="row">
-            <div className="lbl">Delay por detalle (s)</div>
-          </div>
-          <input type="range" min={0} max={5} step={0.5} value={detailDelay} onChange={(e) => setDetailDelay(Number(e.target.value))} />
-          <button className="btn primary" onClick={runSearch} disabled={useFile ? false : (!canSearch || loading)}>
+          <input
+            value={source}
+            onChange={(e) => setSource(e.target.value)}
+            placeholder={isUrl ? 'https://listado.mercadolibre.com.co/...' : 'palabra clave'}
+            className="input"
+          />
+          <button className="btn primary" onClick={runSearch} disabled={!canSearch || loading}>
             {loading ? 'Buscando...' : 'Buscar y actualizar datos'}
           </button>
-          <div className="hint">Tiempo estimado: {estimate.min}s – {estimate.max}s</div>
         </div>
       </div>
       <div className="main">
         <div className="header">
-          <div className="title">Dashboard comparativo de Mercado Libre</div>
+          <div className="title">Análisis de productos</div>
           <div className="auth">
             <button className="btn" onClick={logout}>Cerrar sesión</button>
           </div>
@@ -442,24 +433,18 @@ export default function App() {
         <div className="panel">
           <div className="row between">
             <div className="lbl">Rango de precio</div>
-            <div className="lbl">${Math.round(Math.min(priceMin, priceMax))} — ${Math.round(Math.max(priceMin, priceMax))}</div>
+            <div className="lbl">{formatCOP(Math.min(priceMin, priceMax))} — {formatCOP(Math.max(priceMin, priceMax))}</div>
           </div>
           <div className="range">
-            <input type="range" min={0} max={Math.max(5, priceMax || 5)} step={10} value={Math.min(priceMin, priceMax)} onChange={(e) => setPriceMin(Number(e.target.value))} />
-            <input type="range" min={0} max={Math.max(5, priceMax || 5)} step={10} value={Math.max(priceMin, priceMax)} onChange={(e) => setPriceMax(Number(e.target.value))} />
+            <input type="range" min={0} max={priceMaxBound} step={10000} value={priceMax} onChange={(e) => setPriceMax(Number(e.target.value))} />
           </div>
           <div className="row between">
             <div className="lbl">Rango de calificación</div>
             <div className="lbl">{Math.min(ratingMin, ratingMax).toFixed(2)} — {Math.max(ratingMin, ratingMax).toFixed(2)}</div>
           </div>
           <div className="range">
-            <input type="range" min={0} max={5} step={0.1} value={Math.min(ratingMin, ratingMax)} onChange={(e) => setRatingMin(Number(e.target.value))} />
-            <input type="range" min={0} max={5} step={0.1} value={Math.max(ratingMin, ratingMax)} onChange={(e) => setRatingMax(Number(e.target.value))} />
+            <input type="range" min={0} max={5} step={0.1} value={ratingMin} onChange={(e) => setRatingMin(Number(e.target.value))} />
           </div>
-          <label className="row">
-            <input type="checkbox" checked={onlyDiscount} onChange={(e) => setOnlyDiscount(e.target.checked)} />
-            <span>Solo productos con descuento</span>
-          </label>
         </div>
 
         {error && <div className="error">{error}</div>}
@@ -472,7 +457,6 @@ export default function App() {
                 <tr>
                   <th>Producto</th>
                   <th>Precio</th>
-                  <th>Descuento</th>
                   <th>Rating</th>
                   <th>Opiniones</th>
                   <th>Vendidos</th>
@@ -486,8 +470,7 @@ export default function App() {
                       {it.image ? <img src={it.image} alt="" /> : null}
                       <span>{it.title}</span>
                     </td>
-                    <td>{it.price ?? ''}</td>
-                    <td>{it.discount_price ?? ''}</td>
+                    <td>{formatCOP(Number(it.price || 0))}</td>
                     <td>{it.rating ?? ''}</td>
                     <td>{(it.rating_count ?? (it.reviews ? it.reviews.length : undefined)) ?? ''}</td>
                     <td>{it.sold ?? ''}</td>
@@ -505,10 +488,10 @@ export default function App() {
               <div className="panel-title">Análisis</div>
               <div className="row wrap">
                 <div className="lbl">Items: {analysis.summary.count}</div>
-                <div className="lbl">Precio min: {analysis.summary.price.min ?? ''}</div>
-                <div className="lbl">Precio max: {analysis.summary.price.max ?? ''}</div>
-                <div className="lbl">Precio avg: {analysis.summary.price.avg ?? ''}</div>
-                <div className="lbl">Precio mediana: {analysis.summary.price.median ?? ''}</div>
+                <div className="lbl">Precio min: {formatCOP(Number(analysis.summary.price.min || 0))}</div>
+                <div className="lbl">Precio max: {formatCOP(Number(analysis.summary.price.max || 0))}</div>
+                <div className="lbl">Precio avg: {formatCOP(Number(analysis.summary.price.avg || 0))}</div>
+                <div className="lbl">Precio mediana: {formatCOP(Number(analysis.summary.price.median || 0))}</div>
                 <div className="lbl">Rating avg: {analysis.summary.rating.avg ?? ''}</div>
                 <div className="lbl">Con descuento: {analysis.summary.discount_count}</div>
               </div>
@@ -516,6 +499,7 @@ export default function App() {
           </div>
         )}
       </div>
-    </div>
+      </div>
+    </>
   )
 }
