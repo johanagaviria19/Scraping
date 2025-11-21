@@ -1,8 +1,9 @@
 import argparse
 import os
+import logging
 from pathlib import Path
 
-from scraper.mercadolibre import scrape_listing, scrape_listing_from_url, save_results_to_json
+from scraper.mercadolibre import scrape_listing, scrape_listing_from_url, save_results_to_json, send_results_to_java
 
 
 def run():
@@ -13,6 +14,9 @@ def run():
     parser.add_argument("--per-page-delay", type=float, default=1.5, dest="per_page_delay", help="Delay entre páginas (segundos)")
     parser.add_argument("--detail-delay", type=float, default=1.0, dest="detail_delay", help="Delay entre detalles (segundos)")
     parser.add_argument("--out", default=None, help="Ruta de salida JSON (opcional)")
+    parser.add_argument("--java-url", dest="java_url", default=os.environ.get("JAVA_API_URL", "http://localhost:8080"))
+    parser.add_argument("--token", dest="token", default=os.environ.get("PYTHON_SERVICE_TOKEN"))
+    parser.add_argument("--save-json", action="store_true", dest="save_json")
     # Flags de storage_state removidos para volver al estado base
     args = parser.parse_args()
 
@@ -35,15 +39,18 @@ def run():
             detail_delay=args.detail_delay,
         )
         source = args.keyword
-        default_name = args.keyword.replace(" ", "_")
+        default_name = (args.keyword or "listado").replace(" ", "_")
 
-    out_dir = Path("data")
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out_file = args.out or out_dir / f"{default_name}.json"
-    out_file = str(out_file)
-
-    save_results_to_json(results, source, out_file)
-    print(f"Guardado {len(results)} productos en: {out_file}")
+    logging.basicConfig(level=logging.INFO)
+    ok = send_results_to_java(results, source, args.java_url, args.token)
+    print(f"Enviado {len(results)} productos a: {args.java_url}/api/data ok={ok}")
+    if args.save_json:
+        out_dir = Path("data")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_file = args.out or out_dir / f"{default_name}.json"
+        out_file = str(out_file)
+        save_results_to_json(results, source, out_file)
+        print(f"Guardado {len(results)} productos en: {out_file}")
 
 
 if __name__ == "__main__":

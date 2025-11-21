@@ -3,6 +3,7 @@ import time
 import random
 import json
 import unicodedata
+import logging
 from typing import List, Dict, Optional, Tuple
 
 import requests
@@ -841,6 +842,31 @@ def save_results_to_json(results: List[Dict], keyword: str, out_path: str) -> st
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
     return out_path
+
+
+def send_results_to_java(results: List[Dict], keyword: str, java_base_url: str, token: Optional[str] = None, timeout: int = 20, retries: int = 3) -> bool:
+    url = f"{java_base_url.rstrip('/')}/api/data"
+    payload = {
+        "keyword": keyword,
+        "count": len(results),
+        "items": results,
+    }
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    delay = 1.0
+    for _ in range(retries):
+        try:
+            resp = requests.post(url, json=payload, headers=headers, timeout=timeout)
+            logging.info("POST %s status=%s count=%s", url, resp.status_code, len(results))
+            if 200 <= resp.status_code < 300:
+                return True
+            logging.warning("POST failed status=%s body=%s", resp.status_code, (resp.text or "")[:500])
+        except requests.RequestException as e:
+            logging.error("POST error %s", str(e))
+        time.sleep(delay)
+        delay = min(delay * 2, 8.0)
+    return False
 
 
 def scrape_listing_from_url(url: str, max_pages: int = 10, per_page_delay: float = 1.5, detail_delay: float = 1.0) -> List[Dict]:
