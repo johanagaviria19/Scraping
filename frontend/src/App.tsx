@@ -10,6 +10,7 @@ type Item = {
   rating_count?: number | null
   sold?: number | null
   description?: string | null
+  reviews?: Array<{ title?: string | null; content?: string | null; rate?: number | null; date?: string | null }>
 }
 
 type ApiResponse = {
@@ -19,6 +20,7 @@ type ApiResponse = {
 }
 
 const API_BASE = 'http://localhost:8000'
+const JAVA_BASE = 'http://localhost:8080'
 
 export default function App() {
   const [source, setSource] = useState('telefono')
@@ -29,6 +31,9 @@ export default function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [data, setData] = useState<ApiResponse | null>(null)
+  const [username, setUsername] = useState('user')
+  const [password, setPassword] = useState('pass')
+  const [token, setToken] = useState<string | null>(null)
 
   const canSearch = useMemo(() => source.trim().length > 0, [source])
 
@@ -48,7 +53,36 @@ export default function App() {
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const json = (await res.json()) as ApiResponse
+      try {
+        await fetch(`${JAVA_BASE}/api/data`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(json),
+        })
+      } catch {}
       setData(json)
+      if (token) {
+        const params = new URLSearchParams()
+        if (!isUrl && source) params.append('keyword', source)
+        const listRes = await fetch(`${JAVA_BASE}/api/products?${params.toString()}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (listRes.ok) {
+          const page = await listRes.json()
+          const items: Item[] = (page?.content ?? []).map((p: any) => ({
+            title: p.title,
+            url: p.url,
+            image: p.image,
+            price: p.price,
+            discount_price: p.discount_price,
+            rating: p.rating,
+            rating_count: p.rating_count,
+            sold: p.sold,
+            description: p.description,
+          }))
+          setData({ keyword: source, count: items.length, items })
+        }
+      }
     } catch (e: any) {
       setError(String(e?.message || e))
     } finally {
@@ -56,9 +90,39 @@ export default function App() {
     }
   }
 
+  const register = async () => {
+    setError(null)
+    const res = await fetch(`${JAVA_BASE}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    })
+    if (!res.ok && res.status !== 201) setError(`HTTP ${res.status}`)
+  }
+
+  const login = async () => {
+    setError(null)
+    const res = await fetch(`${JAVA_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    })
+    if (!res.ok) { setError(`HTTP ${res.status}`); return }
+    const json = await res.json()
+    setToken(json?.accessToken || null)
+  }
+
   return (
     <div className="container">
       <h1>Comparador Mercado Libre</h1>
+      <div className="card">
+        <div className="row">
+          <input className="input" placeholder="Usuario" value={username} onChange={(e) => setUsername(e.target.value)} />
+          <input className="input" placeholder="Contraseña" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+          <button className="btn" onClick={register}>Registrar</button>
+          <button className="btn" onClick={login}>{token ? 'Sesión abierta' : 'Login'}</button>
+        </div>
+      </div>
       <div className="card">
         <div className="row">
           <label>
@@ -116,7 +180,7 @@ export default function App() {
                   <td>{it.price ?? ''}</td>
                   <td>{it.discount_price ?? ''}</td>
                   <td>{it.rating ?? ''}</td>
-                  <td>{it.rating_count ?? ''}</td>
+                  <td>{(it.rating_count ?? (it.reviews ? it.reviews.length : undefined)) ?? ''}</td>
                   <td>{it.sold ?? ''}</td>
                   <td>{it.url ? <a href={it.url} target="_blank" rel="noreferrer">Abrir</a> : ''}</td>
                 </tr>
