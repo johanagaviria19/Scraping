@@ -5,6 +5,7 @@ import json
 import unicodedata
 import logging
 from typing import List, Dict, Optional, Tuple
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 from bs4 import BeautifulSoup
@@ -743,12 +744,15 @@ def _extract_product_detail(html: str, base_url: Optional[str] = None) -> Dict:
     }
 
 
-def scrape_listing(keyword: str, max_pages: int = 10, per_page_delay: float = 1.5, detail_delay: float = 1.0) -> List[Dict]:
+def scrape_listing(keyword: str, max_pages: int = 10, per_page_delay: float = 1.5, detail_delay: float = 1.0, min_items: int = 15, deadline_ts: Optional[float] = None) -> List[Dict]:
     """
     Recorre el listado de Mercado Libre para la palabra clave y devuelve
     una lista de dicts con la información de productos. Visita cada detalle
     para enriquecer con descripción y métricas adicionales.
     """
+    start_ts = time.time()
+    if deadline_ts is None:
+        deadline_ts = start_ts + 55.0
     candidates = build_search_candidates(keyword)
     url = None
     html = None
@@ -771,12 +775,42 @@ def scrape_listing(keyword: str, max_pages: int = 10, per_page_delay: float = 1.
                 max_pages=max_pages,
                 per_page_delay=per_page_delay,
                 detail_delay=detail_delay,
+                min_items=min_items,
+                deadline_ts=deadline_ts,
             )
             if url_flow_items:
                 return url_flow_items
         api_items = _api_search_items(keyword)
         if api_items:
-            return api_items
+            enriched: List[Dict] = []
+            seen_urls = set()
+            for item in api_items:
+                if item.get("url"):
+                    try:
+                        if time.time() > deadline_ts:
+                            break
+                        detail_html, final_url = _request_with_url(item["url"], timeout=5)  # type: ignore[index]
+                        if detail_html:
+                            detail = _extract_product_detail(detail_html, final_url or item.get("url"))
+                            item.update(detail)
+                            if final_url:
+                                item["url"] = final_url
+                    except Exception:
+                        pass
+                item["rating"] = item.get("detail_rating") or item.get("rating")
+                item["rating_count"] = item.get("detail_rating_count") or item.get("rating_count")
+                item.pop("detail_rating", None)
+                item.pop("detail_rating_count", None)
+                if _is_product_url(item.get("url")) and item.get("title"):
+                    u = item.get("url")
+                    if isinstance(u, str) and u in seen_urls:
+                        continue
+                    if isinstance(u, str):
+                        seen_urls.add(u)
+                    enriched.append(item)
+                if len(enriched) >= min_items:
+                    break
+            return enriched[:min_items]
         render_items = _render_capture_search(candidates[0]) if candidates else []
         if render_items:
             return render_items
@@ -801,8 +835,9 @@ def scrape_listing(keyword: str, max_pages: int = 10, per_page_delay: float = 1.
         for item in listing_items:
             # Enriquecer con detalle si hay URL
             if item.get("url"):
-                time.sleep(detail_delay + random.uniform(0, 0.5))
-                detail_html, final_url = _request_with_url(item["url"])
+                if time.time() > deadline_ts:
+                    break
+                detail_html, final_url = _request_with_url(item["url"], timeout=5)
                 if detail_html:
                     detail = _extract_product_detail(detail_html, final_url or item.get("url"))
                     item.update(detail)
@@ -820,14 +855,19 @@ def scrape_listing(keyword: str, max_pages: int = 10, per_page_delay: float = 1.
                     continue
                 seen_urls.add(item["url"])
                 all_items.append(item)
+            if len(all_items) >= min_items:
+                break
 
         pages_scraped += 1
         next_url = _find_next_page(html)
 
         if next_url:
-            time.sleep(per_page_delay + random.uniform(0, 0.5))
+            if time.time() + per_page_delay < deadline_ts:
+                time.sleep(per_page_delay + random.uniform(0, 0.5))
+        if len(all_items) >= min_items:
+            break
 
-    return all_items
+    return all_items[:min_items]
 
 
 def save_results_to_json(results: List[Dict], keyword: str, out_path: str) -> str:
@@ -869,10 +909,13 @@ def send_results_to_java(results: List[Dict], keyword: str, java_base_url: str, 
     return False
 
 
-def scrape_listing_from_url(url: str, max_pages: int = 10, per_page_delay: float = 1.5, detail_delay: float = 1.0) -> List[Dict]:
+def scrape_listing_from_url(url: str, max_pages: int = 10, per_page_delay: float = 1.5, detail_delay: float = 1.0, min_items: int = 15, deadline_ts: Optional[float] = None) -> List[Dict]:
+    start_ts = time.time()
+    if deadline_ts is None:
+        deadline_ts = start_ts + 55.0
     q_direct = _parse_query_from_listado_url(url)
     if q_direct:
-        items_direct = scrape_listing(q_direct, max_pages=max_pages, per_page_delay=per_page_delay, detail_delay=detail_delay)
+        items_direct = scrape_listing(q_direct, max_pages=max_pages, per_page_delay=per_page_delay, detail_delay=detail_delay, min_items=min_items, deadline_ts=deadline_ts)
         if items_direct:
             return items_direct
     html = _request(url)
@@ -929,8 +972,9 @@ def scrape_listing_from_url(url: str, max_pages: int = 10, per_page_delay: float
             listing_items = _render_capture_search(next_url)
         for item in listing_items:
             if item.get("url"):
-                time.sleep(detail_delay + random.uniform(0, 0.5))
-                detail_html, final_url = _request_with_url(item["url"])
+                if time.time() > deadline_ts:
+                    break
+                detail_html, final_url = _request_with_url(item["url"], timeout=5)
                 if detail_html:
                     detail = _extract_product_detail(detail_html, final_url or item.get("url"))
                     item.update(detail)
@@ -945,8 +989,13 @@ def scrape_listing_from_url(url: str, max_pages: int = 10, per_page_delay: float
                     continue
                 seen_urls.add(item["url"])
                 all_items.append(item)
+            if len(all_items) >= min_items:
+                break
         pages_scraped += 1
         next_url = _find_next_page(html)
         if next_url:
-            time.sleep(per_page_delay + random.uniform(0, 0.5))
-    return all_items
+            if time.time() + per_page_delay < deadline_ts:
+                time.sleep(per_page_delay + random.uniform(0, 0.5))
+        if len(all_items) >= min_items:
+            break
+    return all_items[:min_items]

@@ -47,6 +47,7 @@ def search(body: SearchBody):
         max_pages=body.max_pages or 5,
         per_page_delay=body.per_page_delay or 1.5,
         detail_delay=body.detail_delay or 1.0,
+        min_items=15,
     )
     try:
         _mongo_upsert_items(items, body.keyword)
@@ -69,6 +70,7 @@ def from_url(body: UrlBody):
         max_pages=body.max_pages or 5,
         per_page_delay=body.per_page_delay or 1.5,
         detail_delay=body.detail_delay or 1.0,
+        min_items=15,
     )
     try:
         _mongo_upsert_items(items, body.url)
@@ -91,6 +93,7 @@ def search_with_analysis(body: SearchBody):
         max_pages=body.max_pages or 5,
         per_page_delay=body.per_page_delay or 1.5,
         detail_delay=body.detail_delay or 1.0,
+        min_items=15,
     )
     try:
         _mongo_upsert_items(items, body.keyword)
@@ -115,6 +118,7 @@ def from_url_with_analysis(body: UrlBody):
         max_pages=body.max_pages or 5,
         per_page_delay=body.per_page_delay or 1.5,
         detail_delay=body.detail_delay or 1.0,
+        min_items=15,
     )
     try:
         _mongo_upsert_items(items, body.url)
@@ -152,6 +156,7 @@ def search_cached_with_analysis(body: SearchBody):
         max_pages=body.max_pages or 5,
         per_page_delay=body.per_page_delay or 1.5,
         detail_delay=body.detail_delay or 1.0,
+        min_items=15,
     )
     if not cached:
         try:

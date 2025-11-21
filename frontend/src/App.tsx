@@ -183,6 +183,12 @@ export default function App() {
     setLoading(true)
     setError(null)
     try {
+      const controller = new AbortController()
+      const timeoutId = window.setTimeout(() => {
+        setError('La carga está lenta, intenta de nuevo')
+        try { controller.abort() } catch {}
+        setLoading(false)
+      }, 60_000)
       const endpoint = isUrl ? '/from-url_with_analysis' : '/search_cached_with_analysis'
       const body = isUrl
         ? { url: source }
@@ -191,14 +197,34 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
+        signal: controller.signal,
       })
+      window.clearTimeout(timeoutId)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const json = (await res.json()) as ApiResponseWithAnalysis
       try {
+        const items = Array.isArray(json.items) ? json.items : []
+        const payload = {
+          keyword: json.keyword,
+          count: items.length,
+          items: items.map(it => ({
+            title: it.title,
+            url: it.url,
+            image: it.image,
+            price: it.price,
+            discount_price: it.discount_price,
+            rating: it.rating,
+            rating_count: it.rating_count,
+            sold: it.sold,
+            description: it.description,
+          })),
+        }
+        const headers: Record<string,string> = { 'Content-Type': 'application/json' }
+        if (token) headers['Authorization'] = `Bearer ${token}`
         await fetch(`${JAVA_BASE}/api/data`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(json),
+          headers,
+          body: JSON.stringify(payload),
         })
       } catch {}
       setData(json)
