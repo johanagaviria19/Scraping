@@ -1,18 +1,21 @@
 package co.julia.scraping.service;
 
-import co.julia.scraping.domain.Product;
 import co.julia.scraping.dto.DataIn;
 import co.julia.scraping.dto.ProductIn;
-import co.julia.scraping.repository.ProductRepository;
+import co.julia.scraping.mongo.MongoProductRepository;
+import co.julia.scraping.mongo.ProductDocument;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 
 @Service
-public class DataService {
-    private final ProductRepository repo;
-    public DataService(ProductRepository repo) { this.repo = repo; }
+@Profile("mongo")
+public class MongoIngestService implements IngestService {
+    private final MongoProductRepository repo;
+    public MongoIngestService(MongoProductRepository repo) { this.repo = repo; }
 
+    @Override
     public int ingest(DataIn in) {
         if (in == null || in.getItems() == null) return 0;
         int saved = 0;
@@ -25,9 +28,9 @@ public class DataService {
     }
 
     private void upsert(ProductIn in, String keyword) {
-        Product p = repo.findByUrl(in.getUrl()).orElse(null);
+        ProductDocument p = repo.findByUrl(in.getUrl()).orElse(null);
         if (p == null) {
-            p = new Product();
+            p = new ProductDocument();
             p.setCreatedAt(Instant.now());
             p.setUrl(in.getUrl());
         }

@@ -1,0 +1,12 @@
+spring:
+  data:
+    mongodb:
+      uri: mongodb://localhost:27017/scraping
+logging:
+  level:
+    root: INFO
+    co.julia.scraping: DEBUG
+cors:
+  allowed-origins: http://localhost:5173,http://localhost:8000
+jwt:
+  secret: change-me-secret

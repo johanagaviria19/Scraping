@@ -12,9 +12,6 @@ spring:
     open-in-view: false
   jackson:
     property-naming-strategy: SNAKE_CASE
-  data:
-    mongodb:
-      uri: mongodb://localhost:27017/scraping
   h2:
     console:
       enabled: true

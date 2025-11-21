@@ -62,6 +62,15 @@ public class ProductController {
         return page.map(ProductMapper::toOutMongo);
     }
 
+    @GetMapping("/by-url")
+    public ResponseEntity<ProductOut> getByUrl(@RequestParam("url") String url) {
+        return queryService.findByUrl(url)
+                .map(ProductMapper::toOut)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+    }
+
     private Instant parseInstant(String s) {
         if (s == null || s.isBlank()) return null;
         try { return Instant.parse(s); } catch (Exception e) { return null; }

@@ -13,3 +13,4 @@ playwright_storage_state.json
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
+java-backend/target/
