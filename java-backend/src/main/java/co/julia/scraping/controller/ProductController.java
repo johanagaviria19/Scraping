@@ -5,6 +5,7 @@ import co.julia.scraping.dto.ProductOut;
 import co.julia.scraping.mapper.ProductMapper;
 import co.julia.scraping.repository.ProductRepository;
 import co.julia.scraping.service.ProductQueryService;
+import co.julia.scraping.repository.MongoProductRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -20,7 +21,8 @@ import java.time.Instant;
 public class ProductController {
     private final ProductRepository repo;
     private final ProductQueryService queryService;
-    public ProductController(ProductRepository repo, ProductQueryService queryService) { this.repo = repo; this.queryService = queryService; }
+    private final MongoProductRepository mongoRepo;
+    public ProductController(ProductRepository repo, ProductQueryService queryService, MongoProductRepository mongoRepo) { this.repo = repo; this.queryService = queryService; this.mongoRepo = mongoRepo; }
 
     @GetMapping
     public Page<ProductOut> list(@RequestParam(value = "keyword", required = false) String keyword,
@@ -46,6 +48,18 @@ public class ProductController {
                 .map(ProductMapper::toOut)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    @GetMapping("/mongo")
+    public Page<ProductOut> listFromMongo(@RequestParam(value = "keyword", required = false) String keyword,
+                                          @PageableDefault(sort = {"createdAt"}, direction = Sort.Direction.DESC, size = 20) Pageable pageable) {
+        Page<co.julia.scraping.domain.MongoProduct> page;
+        if (keyword == null || keyword.isBlank()) {
+            page = mongoRepo.findAll(pageable);
+        } else {
+            page = mongoRepo.findByKeywordContainingIgnoreCase(keyword, pageable);
+        }
+        return page.map(ProductMapper::toOutMongo);
     }
 
     private Instant parseInstant(String s) {
