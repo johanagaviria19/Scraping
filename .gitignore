@@ -14,3 +14,5 @@ frontend/node_modules/
 frontend/dist/
 frontend/.vite/
 java-backend/target/
+java-backend/apache-maven-3.9.11/
+java-backend/apache-maven-3.9.11-bin.zip
