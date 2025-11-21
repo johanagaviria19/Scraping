@@ -9,3 +9,6 @@ playwright/.cache/
 .playwright/
 playwright_storage_state.json
 .trae/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/

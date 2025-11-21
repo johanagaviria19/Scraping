@@ -7,3 +7,5 @@ altair==5.4.1
 typing_extensions==4.15.0
 playwright==1.56.0
 flair==0.13.1
+fastapi==0.115.0
+uvicorn==0.30.1
